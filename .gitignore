@@ -1,0 +1,12 @@
+/data/
+*.env
+*.db
+*.index
+/models/
+*.jpg
+0.7
+*.onnx
+/facenet_env/
+*.xml
+*.iml
+*.idea
