@@ -174,10 +174,10 @@ class FaceDB:
         return res
 
     def get_cam(self):
-        # try:
-            # cam = cv.VideoCapture(0)
-        # except:
-        cam = iter(FrameReciever(os.getenv("camera_link"), os.getenv("camera_auth_token")))
+        try:
+            cam = cv.VideoCapture(0)
+        except:
+            cam = iter(FrameReciever(os.getenv("camera_link"), os.getenv("camera_auth_token")))
 
         return cam
 
