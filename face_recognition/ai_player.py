@@ -3,10 +3,12 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
-import cv2 as cv
 import random
 import time
-from authorize_face import FaceDB
+from face_recognition.authorize_face import FaceDB
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 
 class AIPlayer:
@@ -31,7 +33,7 @@ class AIPlayer:
         import socket
 
         # Target Bluetooth device address and RFCOMM port
-        bd_addr = "6B:E6:D6:90:C2:A2"
+        bd_addr = os.getenv("target_mac_address")
         # dev_name = ""
         port = 1
 
@@ -48,25 +50,13 @@ class AIPlayer:
 
     @classmethod
     def play_user_plyalist_using_faceid(cls):
-        cam = cv.VideoCapture(0)
         fdb = FaceDB()
-        while True:
-            ret, frame = cam.read()
-            distances, indices = fdb.find_similar_faces(frame)
-            if distances is not None:
-                if distances[0][0] >= 0.6:
-                    cam.release()
-                    cv.destroyAllWindows()
+        user_id, username = fdb.authorize_user_cam()
 
-                    idx = indices[0][0]
-                    user_id, username = fdb.get_user_info_by_faceid(idx)
-                    playlists = fdb.get_playlists_by_userid(user_id)
-                    playlist_id = random.choice(playlists)
-                    cls.connect_to_speaker()
-                    cls.open_ytmusic_plyalist(playlist_id[0])
-                    break
-                else:
-                    time.sleep(3)
+        playlists = fdb.get_playlists_by_userid(user_id)
+        playlist_id = random.choice(playlists)
+        cls.connect_to_speaker()
+        cls.open_ytmusic_plyalist(playlist_id[0])
 
 
 if __name__ == "__main__":

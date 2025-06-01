@@ -9,14 +9,13 @@ import cv2 as cv
 from facenet_pytorch import MTCNN
 import numpy as np
 import mediapipe as mp
-from pose_estimation import get_head_pose
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
+from face_recognition.pose_estimation import get_head_pose
+from utils import FrameReciever
 load_dotenv()
 
 
 class FaceDB:
-    root =os.getenv("ROOT_DIR")
+    root = os.getenv("ROOT_DIR")
     faiss_index_path = os.getenv("FAISS_INDEX_PATH")
     model_path = os.path.join(root, "models", os.getenv("MODEL_NAME"))
 
@@ -25,7 +24,7 @@ class FaceDB:
                               ((NEG_INF, -15), (-30, 30)), ((15, POS_INF), (-30, 30))]
     TEXT_INSTRUCTIONS = ["look straight forward", "turn head up", "turn head left", "turn head right"]
 
-    def __init__(self, conn_path="../faces.db"):
+    def __init__(self, conn_path: str = 'your_path_to_db_file'):
         self.conn = sqlite3.connect(conn_path)
         self.mtcnn = MTCNN(image_size=160, margin=0, min_face_size=20,
                       thresholds=[0.6, 0.7, 0.7], factor=0.709, post_process=True, )
@@ -55,10 +54,10 @@ class FaceDB:
         faiss.write_index(index, self.faiss_index_path)
         cursor = self.conn.cursor()
         if not user_exists:
-            cursor.execute("INSERT INTO user_info (name) VALUES (?)", (name,))
+            cursor.execute("INSERT INTO user_info (username) VALUES (?)", (name,))
             user_id = cursor.lastrowid
         else:
-            res = cursor.execute("SELECT id, name FROM user_info WHERE name = ?", (name,))
+            res = cursor.execute("SELECT user_id, username FROM user_info WHERE username = ?", (name,))
             user_id = res.fetchone()[0]
 
         cursor.execute("INSERT INTO face_info (user_id, faiss_id) VALUES (?, ?)", (user_id, faiss_id))
@@ -79,12 +78,15 @@ class FaceDB:
             return distances, indices
         return None, None
 
-    def add_new_yt_playlist(self, user_id, playlist_id):
+    def add_new_yt_playlist(self, user_id, playlist_id, **kwargs):
         cur = self.conn.cursor()
+        other_cols = [kwargs.get(col) for col in ["playlist_name", "playlist_genre",
+                                                  "playlist_mood", "playlist_description"]]
         cur.execute(f"""
-                    INSERT INTO user_playlists (user_id, youtube_playlist_id)
-                    VALUES (?, ?)
-                    """, (user_id, playlist_id))
+                    INSERT INTO user_playlists (user_id, playlist_id, playlist_name,
+                                                playlist_genre, playlist_mood, playlist_description)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """, (user_id, playlist_id, *other_cols))
         self.conn.commit()
         cur.close()
         return True
@@ -92,16 +94,10 @@ class FaceDB:
     def add_new_identity_using_cam(self, name):
         mp_face_mesh = mp.solutions.face_mesh
         current_state = 0
+        cam = self.get_cam()
         with mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1) as face_mesh:
-            cam = cv.VideoCapture(0)
             while True:
-                ret, frame = cam.read()
-                frame = cv.flip(frame, 1)
-                frame_arr = Image.fromarray(frame)
-                image = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
-                cv.putText(frame, f"follow the isntruction: {self.TEXT_INSTRUCTIONS[current_state]}",
-                           (10, 30), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-                cv.imshow("Pose estimation", frame)
+                frame, frame_arr, image = self.get_preprocessed_frame(cam, current_state)
 
                 results = face_mesh.process(image)
                 if results.multi_face_landmarks:
@@ -128,11 +124,35 @@ class FaceDB:
             cv.destroyAllWindows()
             return True
 
+    def get_preprocessed_frame(self, cam, current_state):
+        ret, frame = cam.read()
+        frame = cv.flip(frame, 1)
+        frame_arr = Image.fromarray(frame)
+        image = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+        cv.putText(frame, f"follow the isntruction: {self.TEXT_INSTRUCTIONS[current_state]}",
+                   (10, 30), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        cv.imshow("Pose estimation", frame)
+        return frame, frame_arr, image
+
+    def authorize_user_cam(self):
+        while True:
+            cam = self.get_cam()
+            ret, frame = cam.read()
+            distances, indices = self.find_similar_faces(frame)
+            if distances is not None:
+                if distances[0][0] >= 0.6:
+                    cam.release()
+                    cv.destroyAllWindows()
+
+                    idx = indices[0][0]
+                    user_id, username = self.get_user_info_by_faceid(idx)
+                    return user_id, username
+
     def get_user_info_by_faceid(self, idx):
         cur = self.conn.cursor()
         res = cur.execute(f"""
-            SELECT user_info.id, name FROM user_info
-            JOIN face_info as finfo ON finfo.user_id == user_info.id
+            SELECT user_info.user_id, user_info.username FROM user_info
+            JOIN face_info as finfo ON finfo.user_id == user_info.user_id
             WHERE finfo.faiss_id == {idx}
         """).fetchone()
         cur.close()
@@ -142,18 +162,35 @@ class FaceDB:
     def get_playlists_by_userid(self, user_id):
         cur = self.conn.cursor()
         res = cur.execute(f"""
-            SELECT youtube_playlist_id FROM user_playlists
+            SELECT playlist_id, playlist_name,
+                    playlist_genre, playlist_mood, playlist_description
+            FROM user_playlists
             WHERE user_id == {user_id}               
         """).fetchall()
         cur.close()
+        res = [dict(playlist_id=val1, playlist_name=val2,
+                    playlist_genre=val3, playlist_mood=val4,
+                    playlist_description=val5) for val1, val2, val3, val4, val5 in res]
         return res
+
+    def get_cam(self):
+        # try:
+            # cam = cv.VideoCapture(0)
+        # except:
+        cam = iter(FrameReciever(os.getenv("camera_link"), os.getenv("camera_auth_token")))
+
+        return cam
 
 
 if __name__ == "__main__":
-    name = ...
+    # name = ...
     fdb = FaceDB()
-    fdb.add_new_identity_using_cam(name)
+    # fdb.add_new_identity_using_cam(name)
 
-    # user_id = ...
-    # youtube_playlist_id = "LAK5uy_kzs2yfFTiwxEPAEoo1FqG3uiwbMFpDcSI"
-    # fdb.add_new_yt_playlist(user_id, youtube_playlist_id)
+    user_id = 2
+    youtube_playlist_id = ...
+    fdb.add_new_yt_playlist(user_id, youtube_playlist_id,
+                            playlist_name="Estelle",
+                            playlist_genre="moody rain",
+                            playlist_mood="smoky voice",
+                            playlist_description="Listening when in mood of night jazz")

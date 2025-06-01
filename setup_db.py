@@ -15,6 +15,10 @@ cur.execute("""
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
         playlist_id TEXT NOT NULL,
+        playlist_name TEXT,
+        playlist_genre TEXT,
+        playlist_mood TEXT,
+        playlist_description TEXT,
         FOREIGN KEY (user_id) REFERENCES user_info(user_id)
     )
 """)
