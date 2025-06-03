@@ -24,7 +24,7 @@ class FaceDB:
                               ((NEG_INF, -15), (-30, 30)), ((15, POS_INF), (-30, 30))]
     TEXT_INSTRUCTIONS = ["look straight forward", "turn head up", "turn head left", "turn head right"]
 
-    def __init__(self, conn_path: str = 'your_path_to_db_file'):
+    def __init__(self, conn_path: str):
         self.conn = sqlite3.connect(conn_path)
         self.mtcnn = MTCNN(image_size=160, margin=0, min_face_size=20,
                       thresholds=[0.6, 0.7, 0.7], factor=0.709, post_process=True, )
@@ -183,14 +183,14 @@ class FaceDB:
 
 
 if __name__ == "__main__":
-    # name = ...
-    fdb = FaceDB()
-    # fdb.add_new_identity_using_cam(name)
+    name = "Someone"
+    fdb = FaceDB(r'your_path_to_db')
+    fdb.add_new_identity_using_cam(name)
 
-    user_id = 2
-    youtube_playlist_id = ...
-    fdb.add_new_yt_playlist(user_id, youtube_playlist_id,
-                            playlist_name="Estelle",
-                            playlist_genre="moody rain",
-                            playlist_mood="smoky voice",
-                            playlist_description="Listening when in mood of night jazz")
+    # user_id = ...
+    # youtube_playlist_id = ...
+    # fdb.add_new_yt_playlist(user_id, youtube_playlist_id,
+    #                         playlist_name="",
+    #                         playlist_genre="",
+    #                         playlist_mood="",
+    #                         playlist_description="")

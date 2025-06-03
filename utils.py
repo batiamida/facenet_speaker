@@ -32,20 +32,22 @@ def quantize_pytorch_model(model, input_data, model_name="resnet50_vggface2") ->
     :param device: cpu or cuda depends on which device you want to use for quantization
     :return: path to quantized model
     """
+    base_model = f"{model_name}.onnx"
+
     torch.onnx.export(
         model,
         input_data,
-        f"{model_name}.onnx",
+        base_model,
         input_names=["input"],
         output_names=["output"],
         opset_version=11
     )
 
-    onnx_model = onnx.load(f"{model_name}.onnx")
+
+    onnx_model = onnx.load(base_model)
     onnx.checker.check_model(onnx_model)
 
-    base_model = "resnet50_vggface2.onnx"
-    quant_model = f"{model_name}_quantized16.onnx"
+    quant_model = f"{model_name}_quantized8.onnx"
     quantize_dynamic(base_model, quant_model, weight_type=QuantType.QUInt8)
 
     return os.path.join(os.getcwd(), quant_model)
@@ -116,4 +118,4 @@ class FrameReciever:
 
 
 if __name__ == "__main__":
-    stream = FrameReciever(os.getenv(""), os.getenv("camera_auth_token"))
+    stream = FrameReciever(os.getenv("camera_link"), os.getenv("camera_auth_token"))

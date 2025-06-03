@@ -3,17 +3,17 @@ from langgraph.graph import StateGraph, END
 from langchain_groq import ChatGroq
 from sentence_transformers import SentenceTransformer
 from langgraph.checkpoint.memory import MemorySaver
+import argparse
 
-# import sys
-# sys.path.append(r"C:\Users\Gram\Desktop\projects\facenet_speaker")
 from face_recognition.authorize_face import FaceDB
 from face_recognition.ai_player import AIPlayer
-from audio_chat import Transcriber
+from speaker_decisions.audio_chat import Transcriber
 from typing import TypedDict
 import numpy as np
 
 from dotenv import load_dotenv
 load_dotenv()
+
 
 llm = ChatGroq(model="llama-3.3-70b-versatile")
 model = SentenceTransformer("all-MiniLM-L6-v2")
@@ -100,11 +100,11 @@ def tools_node(state: State) -> State:
 
 
 def get_user_input_node_audio(state: State) -> dict:
-    last_response = state.get("response", "How can I help you?")
-    # print(f"\n🤖 {last_response}")
+    last_response = state.get("response", "what kind of music you want to listen?")
+    print(f"\n🤖 {last_response}")
     transcriber.say(last_response)
     user_input = transcriber.record_and_transcribe()
-    # print("🧑 You: " + user_input)
+    print("🧑 You: " + user_input)
     state["user_input"] = user_input
 
     return state
@@ -119,10 +119,18 @@ def get_user_input_node_text(state: State) -> dict:
 
     return state
 
+
+parser = argparse.ArgumentParser(description="Chat argument parser")
+parser.add_argument("--mode", choices=["audio", "text"], help="Output file name", default="text")
+args = parser.parse_args()
+mode_func = get_user_input_node_audio\
+        if args.mode == "audio"\
+        else get_user_input_node_text
+
 workflow = StateGraph(State)
 
 workflow.add_node("model", model_node)
-workflow.add_node("get_user_input", get_user_input_node_text)
+workflow.add_node("get_user_input", mode_func)
 workflow.add_node("rag", rag_node)
 workflow.add_node("play_music", tools_node)
 
@@ -140,7 +148,7 @@ workflow.add_edge("play_music", END)
 
 
 if __name__ == "__main__":
-    fdb = FaceDB()
+    fdb = FaceDB(r'your_path_to_db')
     user_id, username = fdb.authorize_user_cam()
     playlists = fdb.get_playlists_by_userid(user_id)
     state = State(**{"username": username, "playlists_descr": playlists})
